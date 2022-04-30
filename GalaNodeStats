@@ -1,0 +1,109 @@
+#!/bin/bash
+#This will check the current status of the Gala Node
+#######################################
+#    Parse all data into gala.json    #
+#######################################
+gala-node stats | jq > gala.json
+echo ''
+
+#######################################
+#   Output the current Active Time    #
+#######################################
+#Set Active Today Value (Set to 2 decimal places)
+hourActiveToday=$(printf "%.2f \n" $(jq  '[.workloads[]][] | .msActiveToday/3600000'  gala.json))
+secondsActiveToday=$(printf "%.0f \n" $(jq  '[.workloads[]][] | .msActiveToday/1000'  gala.json))
+
+#Set Percentage for Completion
+percentCompletion=`echo $hourActiveToday/6*100 | bc -l`
+percentCompletion=`printf "%.0f" $percentCompletion`
+
+#Output Total Time Active this cycle
+printf 'Total Time Active this cycle:  %02dh:%02dm:%02ds\n' $((secondsActiveToday/3600)) $((secondsActiveToday%3600/60)) $((secondsActiveToday%60))
+#echo 'Total Hours Active Today: '  $hourActiveToday
+
+#Determine next cycle
+newCycle=$(echo $(( $(date +%s -d "tomorrow 00:00") - $( date +%s ) )))
+#printf '%dh:%dm:%ds\n' $((newCycle/3600)) $((newCycle%3600/60)) $((newCycle%60))
+printf '       Time until next cycle:  %02dh:%02dm:%02ds\n' $((newCycle/3600)) $((newCycle%3600/60)) $((newCycle%60))
+echo ''
+
+#If statement to confirm % completion for reward
+if (( $(echo "$hourActiveToday >= 6" | bc -l) ))
+then
+       # echo "True Statement"
+        echo -e "            \e[1;32mDaily Completion:  100% \e[0m"
+else
+       # echo "False Statement"
+        echo -e '            \e[1;31mDaily Completion: \e[0m' $percentCompletion'%'
+fi
+echo ''
+
+#######################################
+#  Check if there's a version update  #
+#######################################
+#Set Version Values
+cVersion=$(jq '[.summary][] | .currentVersion' -r  gala.json)
+lVersion=$(jq '[.summary][] | .latestVersion' -r  gala.json)
+
+#If statement and produce result
+if [ $cVersion = $lVersion ]
+
+#TRUE - UP TO DATE
+then
+        echo '             Current Version: ' $cVersion
+        echo '              Latest Version: ' $lVersion
+        echo -e '              \e[1;32mVersion Status:  Up to date! \e[0m'
+
+#FALSE - UPDATE AVAILABLE
+else
+        echo '             Current Version: ' $cVersion
+        echo -e '              \e[1;32mLatest Version: \e[0m' $lVersion
+        echo -e '              \e[1;36mVersion Status:  New Version Available! \e[0m'
+
+#Confirm daily completion is 100%
+        if (( $(echo "$hourActiveToday >= 6" | bc -l) ))
+
+#100% Completed! Prompt user to update
+        then
+                echo -n -e '\e[1;33mWould you like to update now? ( y / n ): \e[0m'
+                read -r yesorno
+
+#User selects to update
+                if [ "$yesorno" = y ]; then
+                        #echo 'Running command: wget -O install-headless.sh https://static.gala.games/node/install-headless.sh; sudo bash install-headless.sh --update'
+                        #Countdown Timer of 5 seconds
+                        timeout () {
+                            tput sc
+                            time=$1; while [ $time -ge 0 ]; do
+                                tput rc; tput el
+                                printf "$2" $time
+                                ((time--))
+                                sleep 1
+                            done
+                            tput rc; tput ed;
+                        }
+                        timeout 5 "Running command in %s"
+
+#Run update command
+                        wget -O install-headless.sh https://static.gala.games/node/install-headless.sh; sudo bash install-headless.sh --update
+
+#User selects not to update
+                elif [ "$yesorno" = n ]; then
+                        echo -e "\e[1;31mYou've chosen to not update just yet. Run the script again or run the following command: \e[0m"
+                        echo -e "\e[1;35mwget -O install-headless.sh https://static.gala.games/node/install-headless.sh; sudo bash install-headless.sh --update\e[0m"
+                else
+                    echo "Not a valid answer. Run the script again."
+                    exit 1
+                fi
+
+        else
+               # echo "False Statement"
+                echo -e '\e[1;31mCurrent Daily Completion is not 100%. Wait until the Daily Completion reaches 100% and try again. \e[0m'
+        fi
+fi
+
+#Clear values and add new line
+cVersion=''
+lVersion=''
+echo ''
+
